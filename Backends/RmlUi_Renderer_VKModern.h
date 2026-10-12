@@ -83,6 +83,19 @@ public:
 	// from largest to smallest. Returns zero if the format is not supported.
 	Rml::TextureHandle CreateTexture(VkFormat format, Rml::Span<const TextureMip> mips, AlphaMode alpha_mode);
 
+	// Creates a texture from an image that the application has created and filled. The renderer takes ownership of the image
+	// and its view, and destroys them when the texture is released. The image must be allocated with GetAllocator(), use
+	// premultiplied alpha, and be in the general layout. Commands writing to the image must be submitted to GetQueue() before
+	// the frame that renders the texture, followed by a barrier making the writes visible to fragment shader reads.
+	Rml::TextureHandle RegisterVulkanTexture(VkImage image, VmaAllocation allocation, VkImageView view);
+
+	// Vulkan objects of the renderer, for applications that create their own resources and submit their own commands.
+	VkPhysicalDevice GetPhysicalDevice() const;
+	VkDevice GetDevice() const;
+	VkQueue GetQueue() const;
+	uint32_t GetQueueFamily() const;
+	VmaAllocator GetAllocator() const;
+
 	// -- Inherited from Rml::RenderInterface --
 
 	Rml::CompiledGeometryHandle CompileGeometry(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices) override;
@@ -264,6 +277,7 @@ private:
 	Image CreateImage(VkFormat format, Rml::Vector2i dimensions, uint32_t mip_levels, VkSampleCountFlagBits samples, VkImageUsageFlags usage);
 	void DestroyImage(Image& image);
 	void DestroyGeometryBlock(GeometryBlock& block);
+	void AddToTextureTable(Image& image);
 	Rml::TextureHandle RegisterTexture(Image image);
 	const Image& GetTexture(Rml::TextureHandle handle) const;
 	Rml::TextureHandle UploadTexture(VkFormat format, Rml::Span<const TextureMip> mips, AlphaMode alpha_mode);

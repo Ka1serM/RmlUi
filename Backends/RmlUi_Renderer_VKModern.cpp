@@ -1162,9 +1162,13 @@ RenderInterface_VKModern::Image RenderInterface_VKModern::CreateImage(VkFormat f
 	ImageBarrier(UploadCommands(), image.image, aspect, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_2_NONE,
 		VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT);
 
-	if (!(usage & VK_IMAGE_USAGE_SAMPLED_BIT))
-		return image;
+	if (usage & VK_IMAGE_USAGE_SAMPLED_BIT)
+		AddToTextureTable(image);
+	return image;
+}
 
+void RenderInterface_VKModern::AddToTextureTable(Image& image)
+{
 	if (m_free_texture_indices.empty() && m_next_texture_index == m_texture_capacity)
 	{
 		Rml::Log::Message(Rml::Log::LT_ERROR, "Vulkan: All %u texture slots are in use.", m_texture_capacity);
@@ -1190,7 +1194,6 @@ RenderInterface_VKModern::Image RenderInterface_VKModern::CreateImage(VkFormat f
 	write.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
 	write.pImageInfo = &image_info;
 	vkUpdateDescriptorSets(m_device, 1, &write, 0, nullptr);
-	return image;
 }
 
 void RenderInterface_VKModern::DestroyGeometryBlock(GeometryBlock& block)
@@ -1267,6 +1270,41 @@ Rml::TextureHandle RenderInterface_VKModern::CreateTexture(VkFormat format, Rml:
 		return {};
 	}
 	return UploadTexture(format, mips, alpha_mode);
+}
+
+Rml::TextureHandle RenderInterface_VKModern::RegisterVulkanTexture(VkImage image, VmaAllocation allocation, VkImageView view)
+{
+	Image texture;
+	texture.image = image;
+	texture.allocation = allocation;
+	texture.view = view;
+	AddToTextureTable(texture);
+	return RegisterTexture(texture);
+}
+
+VkPhysicalDevice RenderInterface_VKModern::GetPhysicalDevice() const
+{
+	return m_physical_device;
+}
+
+VkDevice RenderInterface_VKModern::GetDevice() const
+{
+	return m_device;
+}
+
+VkQueue RenderInterface_VKModern::GetQueue() const
+{
+	return m_queue;
+}
+
+uint32_t RenderInterface_VKModern::GetQueueFamily() const
+{
+	return m_queue_family;
+}
+
+VmaAllocator RenderInterface_VKModern::GetAllocator() const
+{
+	return m_allocator;
 }
 
 Rml::TextureHandle RenderInterface_VKModern::GenerateTexture(Rml::Span<const Rml::byte> source_data, Rml::Vector2i source_dimensions)
