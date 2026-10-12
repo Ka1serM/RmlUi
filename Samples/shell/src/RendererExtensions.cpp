@@ -34,6 +34,12 @@
 #elif defined RMLUI_RENDERER_VK
 
 	#include <RmlUi_Renderer_VK.h>
+using RenderInterface_Vulkan = RenderInterface_VK;
+
+#elif defined RMLUI_RENDERER_VK_MODERN
+
+	#include <RmlUi_Renderer_VKModern.h>
+using RenderInterface_Vulkan = RenderInterface_VKModern;
 
 #endif
 
@@ -92,11 +98,11 @@ RendererExtensions::Image RendererExtensions::CaptureScreen()
 	return image;
 }
 
-#elif defined RMLUI_RENDERER_VK
+#elif defined RMLUI_RENDERER_VK || defined RMLUI_RENDERER_VK_MODERN
 
 RendererExtensions::Image RendererExtensions::CaptureScreen()
 {
-	auto* render_interface = rmlui_static_cast<RenderInterface_VK*>(Rml::GetRenderInterface());
+	auto* render_interface = rmlui_static_cast<RenderInterface_Vulkan*>(Rml::GetRenderInterface());
 	if (!render_interface)
 	{
 		Rml::Log::Message(Rml::Log::LT_ERROR, "Could not capture screen. RmlUi render interface not set, or unexpected type.");

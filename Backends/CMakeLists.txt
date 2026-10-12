@@ -16,6 +16,7 @@ if(RMLUI_BACKEND_SIMULATE_TOUCH)
 		"SDL_GL2"
 		"SDL_GL3"
 		"SDL_VK"
+		"SDL_VKModern"
 		"SDL_GPU"
 	)
 	if(NOT RMLUI_BACKEND IN_LIST RMLUI_BACKEND_SIMULATE_TOUCH_SUPPORTED)
@@ -193,6 +194,22 @@ if(UNIX)
 	# The Vulkan renderer implementation uses dlopen/dlclose
 	# This is required in some UNIX and UNIX-like operating systems to load shared object files at runtime
 	target_link_libraries(rmlui_backend_SDL_VK INTERFACE ${CMAKE_DL_LIBS})
+endif()
+
+add_library(rmlui_backend_SDL_VKModern INTERFACE)
+target_sources(rmlui_backend_SDL_VKModern INTERFACE
+	"${CMAKE_CURRENT_LIST_DIR}/RmlUi_Platform_SDL.cpp"
+	"${CMAKE_CURRENT_LIST_DIR}/RmlUi_Renderer_VKModern.cpp"
+	"${CMAKE_CURRENT_LIST_DIR}/RmlUi_Backend_SDL_VK.cpp"
+	"${CMAKE_CURRENT_LIST_DIR}/RmlUi_Platform_SDL.h"
+	"${CMAKE_CURRENT_LIST_DIR}/RmlUi_Renderer_VKModern.h"
+	"${CMAKE_CURRENT_LIST_DIR}/RmlUi_VKModern/ShadersCompiledSPV.h"
+)
+target_compile_definitions(rmlui_backend_SDL_VKModern INTERFACE "RMLUI_RENDERER_VK_MODERN")
+target_link_libraries(rmlui_backend_SDL_VKModern INTERFACE rmlui_backend_common_headers SDL::SDL)
+if(UNIX)
+	# The Vulkan renderer implementation uses dlopen/dlclose
+	target_link_libraries(rmlui_backend_SDL_VKModern INTERFACE ${CMAKE_DL_LIBS})
 endif()
 
 add_library(rmlui_backend_SDL_DX12 INTERFACE)

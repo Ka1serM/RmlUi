@@ -1,4 +1,4 @@
-if(NOT RMLUI_BACKEND MATCHES "(GL3|DX11|DX12|VK)$")
+if(NOT RMLUI_BACKEND MATCHES "(GL3|DX11|DX12|VK|VKModern)$")
 	message(STATUS "Effects sample disabled - only available on GL3 backends")
 	return()
 endif()

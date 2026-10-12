@@ -1,6 +1,12 @@
 #include "RmlUi_Backend.h"
 #include "RmlUi_Platform_SDL.h"
-#include "RmlUi_Renderer_VK.h"
+#if defined RMLUI_RENDERER_VK_MODERN
+	#include "RmlUi_Renderer_VKModern.h"
+using RenderInterface_SDL_VK = RenderInterface_VKModern;
+#else
+	#include "RmlUi_Renderer_VK.h"
+using RenderInterface_SDL_VK = RenderInterface_VK;
+#endif
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Core.h>
 #include <RmlUi/Core/FileInterface.h>
@@ -25,7 +31,7 @@ struct BackendData {
 	BackendData(SDL_Window* window) : system_interface(window) {}
 
 	SystemInterface_SDL system_interface;
-	RenderInterface_VK render_interface;
+	RenderInterface_SDL_VK render_interface;
 	TextInputMethodEditor_SDL text_input_method_editor;
 
 	SDL_Window* window = nullptr;
