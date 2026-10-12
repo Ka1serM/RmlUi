@@ -324,7 +324,12 @@ void GeometryBackgroundBorder::FillEdge(int index_next_corner)
 
 int GeometryBackgroundBorder::GetNumPoints(float R) const
 {
-	return Math::Clamp(3 + Math::RoundToInteger(R / 6.f), 2, 100);
+	// Use enough points so that each segment deviates at most this many pixels from the arc.
+	constexpr float max_deviation = 1.f / 16.f;
+	if (R <= max_deviation)
+		return 2;
+	const float segment_angle = 2.f * Math::ACos(1.f - max_deviation / R);
+	return Math::Clamp(1 + Math::RoundUpToInteger(0.5f * Math::RMLUI_PI / segment_angle), 2, 100);
 }
 
 } // namespace Rml
