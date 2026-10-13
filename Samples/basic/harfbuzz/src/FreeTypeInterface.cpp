@@ -76,7 +76,8 @@ static bool BuildGlyph(FT_Face ft_face, const FontGlyphIndex glyph_index, Charac
 	if (glyph_index == 0)
 		return false;
 
-	FT_Error error = FT_Load_Glyph(ft_face, glyph_index, FT_LOAD_COLOR);
+	// HarfBuzz places the glyphs with unhinted advances.
+	FT_Error error = FT_Load_Glyph(ft_face, glyph_index, FT_LOAD_COLOR | FT_LOAD_NO_HINTING);
 	if (error != 0)
 	{
 #ifdef RMLUI_DEBUG

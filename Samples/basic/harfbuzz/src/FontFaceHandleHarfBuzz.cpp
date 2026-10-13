@@ -7,6 +7,7 @@
 #include FT_FREETYPE_H
 #include <algorithm>
 #include <hb-ft.h>
+#include <hb-ot.h>
 #include <hb.h>
 #include <numeric>
 #include <utility>
@@ -42,6 +43,16 @@ static Vector<hb_feature_t> GetTextShapingFeatures(const TextShapingContext& tex
 	return shaping_features;
 }
 
+static hb_position_t ToFixedPoint(float pixels)
+{
+	return hb_position_t(Rml::Math::Round(pixels * 64.f));
+}
+
+static int RoundFixedPoint(hb_position_t position)
+{
+	return (position + 32) >> 6;
+}
+
 FontFaceHandleHarfBuzz::FontFaceHandleHarfBuzz()
 {
 	base_layer = nullptr;
@@ -70,7 +81,8 @@ bool FontFaceHandleHarfBuzz::Initialize(FontFaceHandleFreetype face, int font_si
 	hb_font = hb_ft_font_create_referenced((FT_Face)ft_face);
 	RMLUI_ASSERT(hb_font != nullptr);
 	hb_font_set_ptem(hb_font, (float)font_size);
-	hb_ft_font_set_funcs(hb_font);
+	// hb_ft_font_set_funcs() gives the glyphs of every weight the advances of the default weight.
+	hb_ot_font_set_funcs(hb_font);
 
 	// Generate the default layer and layer configuration.
 	base_layer = GetOrCreateLayer(nullptr);
@@ -102,7 +114,7 @@ const FallbackFontClusterGlyphsMap& FontFaceHandleHarfBuzz::GetFallbackClusterGl
 int FontFaceHandleHarfBuzz::GetStringWidth(StringView string, const TextShapingContext& text_shaping_context,
 	const LanguageDataMap& registered_languages, Character /*prior_character*/)
 {
-	int width = 0;
+	hb_position_t pen_x = 0;
 
 	// Apply text shaping.
 	hb_buffer_t* shaping_buffer = hb_buffer_create();
@@ -165,12 +177,12 @@ int FontFaceHandleHarfBuzz::GetStringWidth(StringView string, const TextShapingC
 
 			// Adjust the cursor for this character's advance.
 			if (glyph_info[g].codepoint != 0)
-				width += glyph_positions[g].x_advance >> 6;
+				pen_x += glyph_positions[g].x_advance;
 			else
 				// Use the unshaped advance for unsupported characters.
-				width += glyph_pair.second->advance;
+				pen_x += glyph_pair.second->advance * 64;
 
-			width += (int)text_shaping_context.letter_spacing;
+			pen_x += ToFixedPoint(text_shaping_context.letter_spacing);
 
 			glyph_queue.pop();
 		}
@@ -180,7 +192,7 @@ int FontFaceHandleHarfBuzz::GetStringWidth(StringView string, const TextShapingC
 
 	hb_buffer_destroy(shaping_buffer);
 
-	return Rml::Math::Max(width, 0);
+	return Rml::Math::Max(RoundFixedPoint(pen_x), 0);
 }
 
 int FontFaceHandleHarfBuzz::GenerateLayerConfiguration(const FontEffectList& font_effects)
@@ -309,7 +321,7 @@ int FontFaceHandleHarfBuzz::GenerateString(RenderManager& render_manager, Textur
 
 		RMLUI_ASSERT(geometry_index + num_textures <= (int)mesh_list.size());
 
-		line_width = 0;
+		hb_position_t pen_x = 0;
 
 		// Set the mesh and textures to the geometries.
 		for (int tex_index = 0; tex_index < num_textures; ++tex_index)
@@ -381,19 +393,18 @@ int FontFaceHandleHarfBuzz::GenerateString(RenderManager& render_manager, Textur
 				if (layer == base_layer && glyph_pair.second.bitmap->color_format == ColorFormat::RGBA8)
 					glyph_color = ColourbPremultiplied(layer_colour.alpha, layer_colour.alpha);
 
-				Vector2f glyph_offset = {0.0f, 0.0f};
-				glyph_offset += Vector2f{float(glyph_positions[g].x_offset >> 6), float(glyph_positions[g].y_offset >> 6)};
-				Vector2f glyph_geometry_position = Vector2f{position.x + line_width, position.y} + glyph_offset;
+				const Vector2f glyph_geometry_position = position +
+					Vector2f{float(RoundFixedPoint(pen_x + glyph_positions[g].x_offset)), float(glyph_positions[g].y_offset >> 6)};
 				layer->GenerateGeometry(&mesh_list[geometry_index], glyph_pair.first, glyph_pair.second.character, is_cluster, glyph_geometry_position, glyph_color);
 
 				// Adjust the cursor for this character's advance.
 				if (glyph_info[g].codepoint != 0)
-					line_width += glyph_positions[g].x_advance >> 6;
+					pen_x += glyph_positions[g].x_advance;
 				else
 					// Use the unshaped advance for unsupported characters.
-					line_width += glyph_pair.second.bitmap->advance;
+					pen_x += glyph_pair.second.bitmap->advance * 64;
 
-				line_width += (int)text_shaping_context.letter_spacing;
+				pen_x += ToFixedPoint(text_shaping_context.letter_spacing);
 
 				glyph_queue.pop();
 			}
@@ -401,6 +412,7 @@ int FontFaceHandleHarfBuzz::GenerateString(RenderManager& render_manager, Textur
 			g += extra_glyph_index_offset;
 		}
 
+		line_width = RoundFixedPoint(pen_x);
 		geometry_index += num_textures;
 	}
 
