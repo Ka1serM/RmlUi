@@ -1,6 +1,7 @@
 #pragma once
 
 #include <RmlUi/Core/RenderInterface.h>
+#include <mutex>
 
 // Maximum MSAA sample count of the layers, the highest supported count up to this value is used.
 #ifndef RMLUI_RENDER_BACKEND_FIELD_MSAA_SAMPLE_COUNT
@@ -61,7 +62,10 @@ public:
 	RenderInterface_VKModern();
 	~RenderInterface_VKModern();
 
-	bool Initialize(Rml::Vector<const char*> required_extensions, CreateSurfaceCallback create_surface_callback);
+	// The optional device extensions are enabled when the device supports them. The device has one queue in each queue
+	// family, for applications that submit their own work.
+	bool Initialize(Rml::Vector<const char*> required_extensions, CreateSurfaceCallback create_surface_callback,
+		Rml::Vector<const char*> optional_device_extensions = {});
 	void Shutdown();
 
 	// The viewport should be updated whenever the window size changes. This recreates the swapchain without waiting for
@@ -90,11 +94,18 @@ public:
 	Rml::TextureHandle RegisterVulkanTexture(VkImage image, VmaAllocation allocation, VkImageView view);
 
 	// Vulkan objects of the renderer, for applications that create their own resources and submit their own commands.
+	VkInstance GetInstance() const;
 	VkPhysicalDevice GetPhysicalDevice() const;
 	VkDevice GetDevice() const;
 	VkQueue GetQueue() const;
 	uint32_t GetQueueFamily() const;
 	VmaAllocator GetAllocator() const;
+	const Rml::Vector<const char*>& GetDeviceExtensions() const;
+	// The features enabled on the device, with the Vulkan 1.1, 1.2, and 1.3 features chained.
+	const VkPhysicalDeviceFeatures2& GetDeviceFeatures() const;
+	// Guards every queue of the device. The renderer locks it around its own queue operations, and applications lock it
+	// when they use a queue from another thread.
+	std::mutex& GetQueueMutex();
 
 	// -- Inherited from Rml::RenderInterface --
 
@@ -261,7 +272,7 @@ private:
 
 	bool CreateInstance(Rml::Vector<const char*> required_extensions);
 	bool ChoosePhysicalDevice();
-	bool CreateDevice();
+	bool CreateDevice(const Rml::Vector<const char*>& optional_extensions);
 	bool ChooseFormats();
 	void CreateDescriptors();
 	void CreatePipelines();
@@ -310,6 +321,12 @@ private:
 	VkQueue m_queue = VK_NULL_HANDLE;
 	uint32_t m_queue_family = 0;
 	VmaAllocator m_allocator = VK_NULL_HANDLE;
+	Rml::Vector<const char*> m_device_extensions;
+	VkPhysicalDeviceFeatures2 m_features = {};
+	VkPhysicalDeviceVulkan11Features m_features11 = {};
+	VkPhysicalDeviceVulkan12Features m_features12 = {};
+	VkPhysicalDeviceVulkan13Features m_features13 = {};
+	std::mutex m_queue_mutex;
 
 	VkFormat m_color_format = VK_FORMAT_UNDEFINED;
 	VkColorSpaceKHR m_color_space = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;

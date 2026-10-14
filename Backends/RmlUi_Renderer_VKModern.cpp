@@ -308,7 +308,8 @@ struct TGAHeader {
 RenderInterface_VKModern::RenderInterface_VKModern() = default;
 RenderInterface_VKModern::~RenderInterface_VKModern() = default;
 
-bool RenderInterface_VKModern::Initialize(Rml::Vector<const char*> required_extensions, CreateSurfaceCallback create_surface_callback)
+bool RenderInterface_VKModern::Initialize(Rml::Vector<const char*> required_extensions, CreateSurfaceCallback create_surface_callback,
+	Rml::Vector<const char*> optional_device_extensions)
 {
 	if (!gladLoaderLoadVulkan(VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE))
 	{
@@ -322,7 +323,7 @@ bool RenderInterface_VKModern::Initialize(Rml::Vector<const char*> required_exte
 		Rml::Log::Message(Rml::Log::LT_ERROR, "Vulkan: The window surface could not be created.");
 		return false;
 	}
-	if (!ChoosePhysicalDevice() || !CreateDevice() || !ChooseFormats())
+	if (!ChoosePhysicalDevice() || !CreateDevice(optional_device_extensions) || !ChooseFormats())
 		return false;
 
 	CreateDescriptors();
@@ -453,37 +454,45 @@ bool RenderInterface_VKModern::ChoosePhysicalDevice()
 	return true;
 }
 
-bool RenderInterface_VKModern::CreateDevice()
+bool RenderInterface_VKModern::CreateDevice(const Rml::Vector<const char*>& optional_extensions)
 {
-	VkPhysicalDeviceFeatures supported;
-	vkGetPhysicalDeviceFeatures(m_physical_device, &supported);
+	VkPhysicalDeviceVulkan11Features supported11 = {};
+	supported11.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
+	VkPhysicalDeviceFeatures2 supported_features = {};
+	supported_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+	supported_features.pNext = &supported11;
+	vkGetPhysicalDeviceFeatures2(m_physical_device, &supported_features);
+	const VkPhysicalDeviceFeatures& supported = supported_features.features;
 
-	VkPhysicalDeviceVulkan13Features features13 = {};
-	features13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
-	features13.dynamicRendering = VK_TRUE;
-	features13.synchronization2 = VK_TRUE;
+	m_features13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+	m_features13.dynamicRendering = VK_TRUE;
+	m_features13.synchronization2 = VK_TRUE;
 
-	VkPhysicalDeviceVulkan12Features features12 = {};
-	features12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
-	features12.pNext = &features13;
-	features12.runtimeDescriptorArray = VK_TRUE;
-	features12.descriptorBindingPartiallyBound = VK_TRUE;
-	features12.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
-	features12.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
-	features12.bufferDeviceAddress = VK_TRUE;
+	m_features12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+	m_features12.pNext = &m_features13;
+	m_features12.runtimeDescriptorArray = VK_TRUE;
+	m_features12.descriptorBindingPartiallyBound = VK_TRUE;
+	m_features12.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
+	m_features12.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
+	m_features12.bufferDeviceAddress = VK_TRUE;
+	// Required by Vulkan 1.2, for applications that synchronize their own work with timeline semaphores.
+	m_features12.timelineSemaphore = VK_TRUE;
 
-	VkPhysicalDeviceFeatures2 features = {};
-	features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-	features.pNext = &features12;
-	features.features.shaderSampledImageArrayDynamicIndexing = VK_TRUE;
-	features.features.sampleRateShading = supported.sampleRateShading;
+	m_features11.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
+	m_features11.pNext = &m_features12;
+	m_features11.samplerYcbcrConversion = supported11.samplerYcbcrConversion;
+
+	m_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+	m_features.pNext = &m_features11;
+	m_features.features.shaderSampledImageArrayDynamicIndexing = VK_TRUE;
+	m_features.features.sampleRateShading = supported.sampleRateShading;
 	m_sample_shading = (supported.sampleRateShading == VK_TRUE);
 	// Enable compressed formats when available, so that CreateTexture() can upload them.
-	features.features.textureCompressionBC = supported.textureCompressionBC;
-	features.features.textureCompressionETC2 = supported.textureCompressionETC2;
-	features.features.textureCompressionASTC_LDR = supported.textureCompressionASTC_LDR;
+	m_features.features.textureCompressionBC = supported.textureCompressionBC;
+	m_features.features.textureCompressionETC2 = supported.textureCompressionETC2;
+	m_features.features.textureCompressionASTC_LDR = supported.textureCompressionASTC_LDR;
 
-	Rml::Vector<const char*> extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+	m_device_extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 	uint32_t count = 0;
 	Check(vkEnumerateDeviceExtensionProperties(m_physical_device, nullptr, &count, nullptr), "vkEnumerateDeviceExtensionProperties");
 	Rml::Vector<VkExtensionProperties> available(count);
@@ -491,23 +500,33 @@ bool RenderInterface_VKModern::CreateDevice()
 	// Must be enabled when available, see VK_KHR_portability_subset.
 	constexpr const char* portability_subset = "VK_KHR_portability_subset";
 	for (const VkExtensionProperties& extension : available)
+	{
 		if (std::strcmp(extension.extensionName, portability_subset) == 0)
-			extensions.push_back(portability_subset);
+			m_device_extensions.push_back(portability_subset);
+		for (const char* optional : optional_extensions)
+			if (std::strcmp(extension.extensionName, optional) == 0)
+				m_device_extensions.push_back(optional);
+	}
 
+	uint32_t family_count = 0;
+	vkGetPhysicalDeviceQueueFamilyProperties(m_physical_device, &family_count, nullptr);
 	const float priority = 1.f;
-	VkDeviceQueueCreateInfo queue = {};
-	queue.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-	queue.queueFamilyIndex = m_queue_family;
-	queue.queueCount = 1;
-	queue.pQueuePriorities = &priority;
+	Rml::Vector<VkDeviceQueueCreateInfo> queues(family_count);
+	for (uint32_t family = 0; family < family_count; family++)
+	{
+		queues[family].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+		queues[family].queueFamilyIndex = family;
+		queues[family].queueCount = 1;
+		queues[family].pQueuePriorities = &priority;
+	}
 
 	VkDeviceCreateInfo info = {};
 	info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-	info.pNext = &features;
-	info.queueCreateInfoCount = 1;
-	info.pQueueCreateInfos = &queue;
-	info.enabledExtensionCount = uint32_t(extensions.size());
-	info.ppEnabledExtensionNames = extensions.data();
+	info.pNext = &m_features;
+	info.queueCreateInfoCount = family_count;
+	info.pQueueCreateInfos = queues.data();
+	info.enabledExtensionCount = uint32_t(m_device_extensions.size());
+	info.ppEnabledExtensionNames = m_device_extensions.data();
 	if (vkCreateDevice(m_physical_device, &info, nullptr, &m_device) != VK_SUCCESS)
 	{
 		Rml::Log::Message(Rml::Log::LT_ERROR, "Vulkan: The Vulkan device could not be created.");
@@ -892,7 +911,10 @@ void RenderInterface_VKModern::Shutdown()
 		return;
 	}
 
-	Check(vkDeviceWaitIdle(m_device), "vkDeviceWaitIdle");
+	{
+		std::lock_guard<std::mutex> lock(m_queue_mutex);
+		Check(vkDeviceWaitIdle(m_device), "vkDeviceWaitIdle");
+	}
 	CollectGarbage(true);
 
 	for (Image& image : m_textures)
@@ -1282,6 +1304,11 @@ Rml::TextureHandle RenderInterface_VKModern::RegisterVulkanTexture(VkImage image
 	return RegisterTexture(texture);
 }
 
+VkInstance RenderInterface_VKModern::GetInstance() const
+{
+	return m_instance;
+}
+
 VkPhysicalDevice RenderInterface_VKModern::GetPhysicalDevice() const
 {
 	return m_physical_device;
@@ -1305,6 +1332,21 @@ uint32_t RenderInterface_VKModern::GetQueueFamily() const
 VmaAllocator RenderInterface_VKModern::GetAllocator() const
 {
 	return m_allocator;
+}
+
+const Rml::Vector<const char*>& RenderInterface_VKModern::GetDeviceExtensions() const
+{
+	return m_device_extensions;
+}
+
+const VkPhysicalDeviceFeatures2& RenderInterface_VKModern::GetDeviceFeatures() const
+{
+	return m_features;
+}
+
+std::mutex& RenderInterface_VKModern::GetQueueMutex()
+{
+	return m_queue_mutex;
 }
 
 Rml::TextureHandle RenderInterface_VKModern::GenerateTexture(Rml::Span<const Rml::byte> source_data, Rml::Vector2i source_dimensions)
@@ -1661,6 +1703,7 @@ void RenderInterface_VKModern::EndFrame()
 	submit.signalSemaphoreInfoCount = acquired ? 1 : 0;
 	submit.pSignalSemaphoreInfos = &signal;
 	Check(vkResetFences(m_device, 1, &frame.fence), "vkResetFences");
+	std::unique_lock<std::mutex> lock(m_queue_mutex);
 	Check(vkQueueSubmit2(m_queue, 1, &submit, frame.fence), "vkQueueSubmit2");
 
 	m_frame_counter++;
@@ -1677,6 +1720,7 @@ void RenderInterface_VKModern::EndFrame()
 	present.pSwapchains = &m_swapchain.swapchain;
 	present.pImageIndices = &m_image_index;
 	const VkResult result = vkQueuePresentKHR(m_queue, &present);
+	lock.unlock();
 	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
 		RecreateSwapchain();
 	else
@@ -2462,8 +2506,11 @@ bool RenderInterface_VKModern::CaptureScreen(int& width, int& height, int& num_c
 	submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
 	submit.commandBufferInfoCount = 1;
 	submit.pCommandBufferInfos = &command_info;
-	Check(vkQueueSubmit2(m_queue, 1, &submit, VK_NULL_HANDLE), "vkQueueSubmit2");
-	Check(vkQueueWaitIdle(m_queue), "vkQueueWaitIdle");
+	{
+		std::lock_guard<std::mutex> lock(m_queue_mutex);
+		Check(vkQueueSubmit2(m_queue, 1, &submit, VK_NULL_HANDLE), "vkQueueSubmit2");
+		Check(vkQueueWaitIdle(m_queue), "vkQueueWaitIdle");
+	}
 	vkDestroyCommandPool(m_device, pool, nullptr);
 	if (multisampled)
 		vmaDestroyImage(m_allocator, resolved, resolved_allocation);
