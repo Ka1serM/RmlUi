@@ -120,6 +120,7 @@ struct hash<::Rml::BoxShadowGeometryInfo> {
 			HashCombine(seed, v);
 		}
 
+		HashCombine(seed, in.render_manager);
 		HashCombine(seed, in.texture_dimensions);
 		HashCombine(seed, in.element_offset_in_texture);
 

@@ -114,6 +114,27 @@ const FallbackFontClusterGlyphsMap& FontFaceHandleHarfBuzz::GetFallbackClusterGl
 int FontFaceHandleHarfBuzz::GetStringWidth(StringView string, const TextShapingContext& text_shaping_context,
 	const LanguageDataMap& registered_languages, Character /*prior_character*/)
 {
+	String key(string.begin(), string.end());
+	key += '\0';
+	key += text_shaping_context.language;
+	key += static_cast<char>(text_shaping_context.text_direction);
+	key += static_cast<char>(text_shaping_context.font_kerning);
+	key.append(reinterpret_cast<const char*>(&text_shaping_context.letter_spacing), sizeof(float));
+
+	const auto it = string_widths.find(key);
+	if (it != string_widths.end())
+		return it->second;
+
+	const int width = ShapeStringWidth(string, text_shaping_context, registered_languages);
+	if (string_widths.size() >= 8192)
+		string_widths.clear();
+	string_widths.emplace(std::move(key), width);
+	return width;
+}
+
+int FontFaceHandleHarfBuzz::ShapeStringWidth(StringView string, const TextShapingContext& text_shaping_context,
+	const LanguageDataMap& registered_languages)
+{
 	hb_position_t pen_x = 0;
 
 	// Apply text shaping.

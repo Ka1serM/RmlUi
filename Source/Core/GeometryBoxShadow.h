@@ -5,6 +5,8 @@
 #include "../../Include/RmlUi/Core/Types.h"
 
 namespace Rml {
+
+class RenderManager;
 using RenderBoxList = Vector<RenderBox>;
 struct BoxShadowGeometryInfo {
 	ColourbPremultiplied background_color;
@@ -16,13 +18,14 @@ struct BoxShadowGeometryInfo {
 	RenderBoxList border_render_boxes;
 	BoxShadowList shadow_list;
 	float opacity;
+	RenderManager* render_manager = nullptr;
 };
 inline bool operator==(const BoxShadowGeometryInfo& a, const BoxShadowGeometryInfo& b)
 {
 	return a.background_color == b.background_color && a.border_colors == b.border_colors && a.border_radius == b.border_radius &&
 		a.texture_dimensions == b.texture_dimensions && a.element_offset_in_texture == b.element_offset_in_texture &&
 		a.padding_render_boxes == b.padding_render_boxes && a.border_render_boxes == b.border_render_boxes && a.shadow_list == b.shadow_list &&
-		a.opacity == b.opacity;
+		a.opacity == b.opacity && a.render_manager == b.render_manager;
 }
 inline bool operator!=(const BoxShadowGeometryInfo& a, const BoxShadowGeometryInfo& b)
 {

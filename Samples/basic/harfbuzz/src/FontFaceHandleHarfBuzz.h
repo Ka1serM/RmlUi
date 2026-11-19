@@ -145,6 +145,11 @@ private:
 	StringView GetCurrentClusterString(const struct hb_glyph_info_t* glyph_info, int glyph_count, int glyph_index, Character first_character,
 		StringView string, int& cluster_codepoint_count) const;
 
+	int ShapeStringWidth(StringView string, const TextShapingContext& text_shaping_context, const LanguageDataMap& registered_languages);
+
+	// Shaped widths by string and shaping context. Layout measures the same strings on every pass.
+	UnorderedMap<String, int> string_widths;
+
 	FontGlyphMap glyphs;
 	FallbackFontGlyphMap fallback_glyphs;
 
